@@ -1,6 +1,6 @@
 name: "Nanobot AI"
-description: "Ultra-Lightweight AI Agent (Gateway Mode). Supports MCP and local RAG."
-version: "0.1.0"
+description: "Ultra-Lightweight AI Agent (Gateway Mode). Supporta MCP e RAG locale."
+version: "0.1.9"
 slug: "nanobot"
 url: "https://github.com/dartanidi/ha-nanobot"
 arch:
@@ -21,7 +21,7 @@ options:
   workspace_path: "/share/nanobot_workspace"
   additional_config_json: "{}"
 schema:
-  provider: list(openrouter,openai,anthropic,groq,deepseek,gemini,minimax,vllm,custom)
+  provider: str
   api_key: str
   model: str
   api_base: str?
