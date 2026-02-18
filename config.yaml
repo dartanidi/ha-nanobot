@@ -1,6 +1,6 @@
 name: "Nanobot AI"
-description: "Ultra-Lightweight AI Agent (Gateway Mode). Supporta MCP e RAG locale."
-version: "0.1.9"
+description: "Ultra-Lightweight AI Agent (Gateway Mode). Supports MCP, Telegram & Email."
+version: "0.1.10"
 slug: "nanobot"
 url: "https://github.com/dartanidi/ha-nanobot"
 arch:
@@ -13,6 +13,7 @@ map:
 ports:
   18790/tcp: 18790
 options:
+  # Core Config
   provider: "openrouter"
   api_key: ""
   model: "anthropic/claude-3-5-sonnet"
@@ -20,7 +21,22 @@ options:
   restrict_to_workspace: true
   workspace_path: "/share/nanobot_workspace"
   additional_config_json: "{}"
+  
+  # Telegram Config
+  telegram_enabled: false
+  telegram_token: ""
+  telegram_allow_user: ""
+
+  # Email Config
+  email_enabled: false
+  email_username: ""
+  email_password: ""
+  email_allow_from: ""
+  email_imap_server: "imap.gmail.com"
+  email_smtp_server: "smtp.gmail.com"
+
 schema:
+  # Core Schema
   provider: str
   api_key: str
   model: str
@@ -28,3 +44,16 @@ schema:
   restrict_to_workspace: bool
   workspace_path: str
   additional_config_json: str
+
+  # Telegram Schema
+  telegram_enabled: bool
+  telegram_token: str?
+  telegram_allow_user: str?
+
+  # Email Schema
+  email_enabled: bool
+  email_username: str?
+  email_password: password?
+  email_allow_from: str?
+  email_imap_server: str?
+  email_smtp_server: str?
