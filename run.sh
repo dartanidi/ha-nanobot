@@ -1,7 +1,7 @@
 #!/usr/bin/with-contenv bashio
 
 # ------------------------------------------------------------------------------
-# 1. SETUP PERSISTENZA E LINKING
+# 1. SETUP PERSISTENZA E LINKING ROOT
 # ------------------------------------------------------------------------------
 PERSISTENT_DIR="/data/nanobot_root"
 INTERNAL_DIR="/root/.nanobot"
@@ -14,21 +14,29 @@ fi
 ln -sfn "$PERSISTENT_DIR" "$INTERNAL_DIR"
 
 # ------------------------------------------------------------------------------
-# 2. CONFIGURAZIONE WORKSPACE E MEDIA (Symlink Fix)
+# 2. CONFIGURAZIONE WORKSPACE E MEDIA (Il Fix dei Symlink)
 # ------------------------------------------------------------------------------
 USER_WORKSPACE=$(bashio::config 'workspace_path')
 USER_MEDIA=$(bashio::config 'media_path')
-INTERNAL_WORKSPACE="/root/.nanobot/workspace"
 
-# Creazione cartelle fisiche
+# Percorsi interni che Nanobot usa di default
+INTERNAL_WORKSPACE="/root/.nanobot/workspace"
+INTERNAL_DEFAULT_MEDIA="/root/.nanobot/media"
+
+# Creazione cartelle fisiche nello share
 mkdir -p "$USER_WORKSPACE/skills"
 mkdir -p "$USER_MEDIA"
 
-# Symlink: l'agente scrive in /root/.nanobot/workspace e finisce in /share/...
+# FIX 1: Colleghiamo il Workspace
 rm -rf "$INTERNAL_WORKSPACE"
 ln -sfn "$USER_WORKSPACE" "$INTERNAL_WORKSPACE"
 
-bashio::log.info "Workspace linked: $INTERNAL_WORKSPACE -> $USER_WORKSPACE"
+# FIX 2: Colleghiamo la cartella media interna a quella dello share
+# Questo risolve il problema del file che finisce in /root/.nanobot/media/
+rm -rf "$INTERNAL_DEFAULT_MEDIA"
+ln -sfn "$USER_MEDIA" "$INTERNAL_DEFAULT_MEDIA"
+
+bashio::log.info "Symlinks attivi: Media -> $USER_MEDIA"
 
 # ------------------------------------------------------------------------------
 # 3. INSTALLAZIONE SKILL INTERNA: CLAWHUB
@@ -97,15 +105,47 @@ fi
 if bashio::config.true 'telegram_enabled'; then
     TG_TOKEN=$(bashio::config 'telegram_token')
     TG_USER=$(bashio::config 'telegram_allow_user')
-    # Usiamo il percorso interno linkato per i download
-    TG_MEDIA="/root/.nanobot/workspace/media"
+    # Puntiamo al percorso interno che ora è linkato allo share
+    TG_DOWNLOAD_PATH="/root/.nanobot/media"
     
-    BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg token "$TG_TOKEN" --arg user "$TG_USER" --arg media "$TG_MEDIA" \
-        '.channels.telegram = { "enabled": true, "token": $token, "allowFrom": [$user], "downloadPath": $media }')
+    BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg token "$TG_TOKEN" --arg user "$TG_USER" --arg media "$TG_DOWNLOAD_PATH" \
+        '.channels.telegram = {
+            "enabled": true,
+            "token": $token,
+            "allowFrom": [$user],
+            "downloadPath": $media
+        }')
 fi
 
-# Email (Omitted for brevity, but same logic as before)
-# ... [Logica Email precedentemente definita] ...
+# Email
+if bashio::config.true 'email_enabled'; then
+    MAIL_USER=$(bashio::config 'email_username')
+    MAIL_PASS=$(bashio::config 'email_password')
+    MAIL_IMAP=$(bashio::config 'email_imap_server')
+    MAIL_SMTP=$(bashio::config 'email_smtp_server')
+    MAIL_ALLOW=$(bashio::config 'email_allow_from')
+    
+    BASE_CONFIG=$(echo "$BASE_CONFIG" | jq \
+        --arg user "$MAIL_USER" \
+        --arg pass "$MAIL_PASS" \
+        --arg imap "$MAIL_IMAP" \
+        --arg smtp "$MAIL_SMTP" \
+        --arg allow "$MAIL_ALLOW" \
+        '.channels.email = {
+            "enabled": true,
+            "consentGranted": true,
+            "imapHost": $imap,
+            "imapPort": 993,
+            "imapUsername": $user,
+            "imapPassword": $pass,
+            "smtpHost": $smtp,
+            "smtpPort": 587,
+            "smtpUsername": $user,
+            "smtpPassword": $pass,
+            "fromAddress": $user,
+            "allowFrom": ($allow | split(",") | map(gsub("^\\s+|\\s+$";""))) 
+        }')
+fi
 
 FINAL_CONFIG=$(echo "$BASE_CONFIG" | jq --argjson add "$ADDITIONAL_JSON" '. * $add')
 echo "$FINAL_CONFIG" > "$INTERNAL_DIR/config.json"
