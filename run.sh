@@ -12,33 +12,34 @@ mkdir -p "$USER_WORKSPACE/skills"
 mkdir -p "$USER_MEDIA"
 
 # 3. Pulizia e Setup Percorsi Interni al Container
-# Nanobot cerca i suoi file in /root/.nanobot
 INTERNAL_ROOT="/root/.nanobot"
 rm -rf "$INTERNAL_ROOT"
 mkdir -p "$INTERNAL_ROOT"
 
-# --- IL FIX PER LA RICORSIVITÀ ---
-# Invece di linkare /root/.nanobot a /share/..., linkiamo solo i file vitali
-# Questo impedisce al bot di "vedere" se stesso in un loop infinito.
-
-# Linkiamo il database e il config.json dentro la cartella system
-# Se esistono già, verranno usati, altrimenti verranno creati lì.
+# --- MAPPATURA SELETTIVA (Anti-Loop) ---
+# Linkiamo il database fisicamente nello share
 touch "$SYSTEM_DIR/nanobot.db"
 ln -sfn "$SYSTEM_DIR/nanobot.db" "$INTERNAL_ROOT/nanobot.db"
 
 # 4. Setup del Workspace per l'Agente
-# L'agente lavorerà in /root/.nanobot/workspace, che punta alla radice dello share
+# Creiamo una cartella REALE che conterrà solo i link agli elementi dello share
 INTERNAL_WORKSPACE="$INTERNAL_ROOT/workspace"
-ln -sfn "$USER_WORKSPACE" "$INTERNAL_WORKSPACE"
+mkdir -p "$INTERNAL_WORKSPACE"
 
-# 5. Setup Media
-INTERNAL_MEDIA="$INTERNAL_ROOT/media"
-ln -sfn "$USER_MEDIA" "$INTERNAL_MEDIA"
+# Linkiamo selettivamente le cartelle dello share DENTRO il workspace interno
+# In questo modo Nanobot vede i file ma non può "rientrare" in /system
+ln -sfn "$USER_WORKSPACE/skills" "$INTERNAL_WORKSPACE/skills"
 
-bashio::log.info "Sistema avviato con mappatura selettiva (Anti-Loop)"
+# --- IL FIX PER I DOCUMENTI TELEGRAM ---
+# La cartella media DEVE essere dentro il workspace per essere letta dall'AI
+ln -sfn "$USER_MEDIA" "$INTERNAL_WORKSPACE/media"
+# Definiamo il percorso di download per il JSON di Telegram
+INTERNAL_MEDIA_PATH="$INTERNAL_WORKSPACE/media"
+
+bashio::log.info "Sistema avviato. Workspace: $INTERNAL_WORKSPACE | Media: $INTERNAL_MEDIA_PATH"
 
 # ------------------------------------------------------------------------------
-# 6. GENERAZIONE CONFIGURAZIONE JSON
+# 5. GENERAZIONE CONFIGURAZIONE JSON
 # ------------------------------------------------------------------------------
 PROVIDER=$(bashio::config 'provider')
 API_KEY=$(bashio::config 'api_key')
@@ -62,11 +63,11 @@ BASE_CONFIG=$(jq -n \
     "channels": {} 
   }')
 
-# Telegram (se abilitato)
+# Telegram (Configurato per scaricare nel percorso visibile all'agente)
 if bashio::config.true 'telegram_enabled'; then
     TG_TOKEN=$(bashio::config 'telegram_token')
     TG_USER=$(bashio::config 'telegram_allow_user')
-    BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg token "$TG_TOKEN" --arg user "$TG_USER" --arg media "$INTERNAL_MEDIA" \
+    BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg token "$TG_TOKEN" --arg user "$TG_USER" --arg media "$INTERNAL_MEDIA_PATH" \
         '.channels.telegram = {
             "enabled": true,
             "token": $token,
@@ -81,7 +82,7 @@ echo "$FINAL_CONFIG" > "$SYSTEM_DIR/config.json"
 ln -sfn "$SYSTEM_DIR/config.json" "$INTERNAL_ROOT/config.json"
 
 # ------------------------------------------------------------------------------
-# 7. AVVIO
+# 6. AVVIO
 # ------------------------------------------------------------------------------
 bashio::log.info "Avvio Nanobot Gateway..."
 exec nanobot gateway
