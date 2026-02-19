@@ -1,6 +1,6 @@
 name: "Nanobot AI"
 description: "Ultra-Lightweight AI Agent (Gateway Mode). Supports MCP, Telegram & Email."
-version: "0.2.03"
+version: "0.2.04"
 slug: "nanobot"
 url: "https://github.com/dartanidi/ha-nanobot"
 arch:
