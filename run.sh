@@ -1,52 +1,48 @@
 #!/usr/bin/with-contenv bashio
 
-# 1. Recupero percorsi dallo share (definiti nell'interfaccia dell'addon)
+# 1. RECUPERO CONFIGURAZIONE UTENTE
 USER_WORKSPACE=$(bashio::config 'workspace_path')
 USER_MEDIA=$(bashio::config 'media_path')
-
-# 2. Definiamo la cartella di sistema FISICA nello share
-# Qui Nanobot salverà il database e la configurazione
 SYSTEM_DIR="$USER_WORKSPACE/system"
+
+# 2. CREAZIONE STRUTTURA FISICA SU SHARE
 mkdir -p "$SYSTEM_DIR"
 mkdir -p "$USER_WORKSPACE/skills"
 mkdir -p "$USER_MEDIA"
 
-# 3. Pulizia e Setup Percorsi Interni al Container
+# 3. SETUP AMBIENTE INTERNO (PULIZIA TOTALE)
 INTERNAL_ROOT="/root/.nanobot"
+INTERNAL_WORKSPACE="$INTERNAL_ROOT/workspace"
+
+# Rimuoviamo tutto per evitare vecchi link orfani o loop
 rm -rf "$INTERNAL_ROOT"
 mkdir -p "$INTERNAL_ROOT"
+mkdir -p "$INTERNAL_WORKSPACE"
 
-# --- MAPPATURA SELETTIVA (Anti-Loop) ---
-# Linkiamo il database fisicamente nello share
+# 4. MAPPATURA SELETTIVA (ANTI-RICORSIONE)
+# Linkiamo il database e la config nella cartella system
 touch "$SYSTEM_DIR/nanobot.db"
 ln -sfn "$SYSTEM_DIR/nanobot.db" "$INTERNAL_ROOT/nanobot.db"
 
-# 4. Setup del Workspace per l'Agente
-# Creiamo una cartella REALE che conterrà solo i link agli elementi dello share
-INTERNAL_WORKSPACE="$INTERNAL_ROOT/workspace"
-mkdir -p "$INTERNAL_WORKSPACE"
-
-# Linkiamo selettivamente le cartelle dello share DENTRO il workspace interno
-# In questo modo Nanobot vede i file ma non può "rientrare" in /system
+# Linkiamo le skill nel workspace
 ln -sfn "$USER_WORKSPACE/skills" "$INTERNAL_WORKSPACE/skills"
 
-# --- IL FIX PER I DOCUMENTI TELEGRAM ---
-# La cartella media DEVE essere dentro il workspace per essere letta dall'AI
+# --- FIX DEFINITIVO MEDIA ---
+# Creiamo il link media SOLO dentro workspace. 
+# Se Nanobot scarica qui, l'agente vedrà i file come /root/.nanobot/workspace/media/...
 ln -sfn "$USER_MEDIA" "$INTERNAL_WORKSPACE/media"
-# Definiamo il percorso di download per il JSON di Telegram
-INTERNAL_MEDIA_PATH="$INTERNAL_WORKSPACE/media"
+TG_DOWNLOAD_PATH="$INTERNAL_WORKSPACE/media"
 
-bashio::log.info "Sistema avviato. Workspace: $INTERNAL_WORKSPACE | Media: $INTERNAL_MEDIA_PATH"
+bashio::log.info "Nanobot configurato. Workspace: $INTERNAL_WORKSPACE | Download Telegram: $TG_DOWNLOAD_PATH"
 
-# ------------------------------------------------------------------------------
 # 5. GENERAZIONE CONFIGURAZIONE JSON
-# ------------------------------------------------------------------------------
 PROVIDER=$(bashio::config 'provider')
 API_KEY=$(bashio::config 'api_key')
 MODEL=$(bashio::config 'model')
 RESTRICT=$(bashio::config 'restrict_to_workspace')
 ADDITIONAL_JSON=$(bashio::config 'additional_config_json')
 
+# Costruzione JSON base
 BASE_CONFIG=$(jq -n \
   --arg prov "$PROVIDER" \
   --arg key "$API_KEY" \
@@ -63,11 +59,11 @@ BASE_CONFIG=$(jq -n \
     "channels": {} 
   }')
 
-# Telegram (Configurato per scaricare nel percorso visibile all'agente)
+# Aggiunta canale Telegram
 if bashio::config.true 'telegram_enabled'; then
     TG_TOKEN=$(bashio::config 'telegram_token')
     TG_USER=$(bashio::config 'telegram_allow_user')
-    BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg token "$TG_TOKEN" --arg user "$TG_USER" --arg media "$INTERNAL_MEDIA_PATH" \
+    BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg token "$TG_TOKEN" --arg user "$TG_USER" --arg media "$TG_DOWNLOAD_PATH" \
         '.channels.telegram = {
             "enabled": true,
             "token": $token,
@@ -76,13 +72,11 @@ if bashio::config.true 'telegram_enabled'; then
         }')
 fi
 
-# Salviamo il config.json fisicamente nello share, ma linkato internamente
+# Merge con configurazioni extra e salvataggio
 FINAL_CONFIG=$(echo "$BASE_CONFIG" | jq --argjson add "$ADDITIONAL_JSON" '. * $add')
 echo "$FINAL_CONFIG" > "$SYSTEM_DIR/config.json"
 ln -sfn "$SYSTEM_DIR/config.json" "$INTERNAL_ROOT/config.json"
 
-# ------------------------------------------------------------------------------
 # 6. AVVIO
-# ------------------------------------------------------------------------------
-bashio::log.info "Avvio Nanobot Gateway..."
+bashio::log.info "Lancio Nanobot Gateway..."
 exec nanobot gateway
