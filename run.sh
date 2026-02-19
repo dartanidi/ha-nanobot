@@ -1,38 +1,40 @@
 #!/usr/bin/with-contenv bashio
 
-# 1. PERCORSI FISICI
+# 1. PERCORSI FISICI E VARIABILI DALLA UI
 USER_WORKSPACE=$(bashio::config 'workspace_path')
 USER_MEDIA=$(bashio::config 'media_path')
 SYSTEM_DIR="$USER_WORKSPACE/system"
 
+# Creazione della struttura fisica nello share di Home Assistant
 mkdir -p "$SYSTEM_DIR"
 mkdir -p "$USER_WORKSPACE/skills"
 mkdir -p "$USER_MEDIA"
 
-# 2. SETUP E PULIZIA
+# 2. SETUP E PULIZIA DELL'AMBIENTE INTERNO
 INTERNAL_ROOT="/root/.nanobot"
 rm -rf "$INTERNAL_ROOT"
 mkdir -p "$INTERNAL_ROOT"
 
-# 3. LINK SIMBOLICI LINEARI (Nessun inganno, solo ponti diretti)
+# 3. CREAZIONE PONTI (LINK SIMBOLICI)
+# Linkiamo il database
 touch "$SYSTEM_DIR/nanobot.db"
 ln -sfn "$SYSTEM_DIR/nanobot.db" "$INTERNAL_ROOT/nanobot.db"
 
-# Il workspace dell'agente punta allo share
+# Il workspace dell'agente punta interamente allo share
 ln -sfn "$USER_WORKSPACE" "$INTERNAL_ROOT/workspace"
 
-# La cartella media di Telegram punta allo share media
+# La cartella media dove Telegram salva i file punta allo share
 ln -sfn "$USER_MEDIA" "$INTERNAL_ROOT/media"
 
-bashio::log.info "Ponti creati. Restrizione Workspace: DISABILITATA."
+bashio::log.info "Struttura creata. Restrizione Workspace disabilitata con successo."
 
-# 4. CONFIGURAZIONE JSON (Bypass Sicurezza)
+# 4. GENERAZIONE CONFIGURAZIONE JSON
 PROVIDER=$(bashio::config 'provider')
 API_KEY=$(bashio::config 'api_key')
 MODEL=$(bashio::config 'model')
 ADDITIONAL_JSON=$(bashio::config 'additional_config_json')
 
-# IMPORTANTE: "restrictToWorkspace": false sblocca la lettura dei media
+# Generazione JSON base con restrictToWorkspace forzato a false
 BASE_CONFIG=$(jq -n \
   --arg prov "$PROVIDER" \
   --arg key "$API_KEY" \
@@ -46,6 +48,14 @@ BASE_CONFIG=$(jq -n \
     "channels": {} 
   }')
 
+# Aggiunta API Base (opzionale)
+if bashio::config.has_value 'api_base'; then
+    API_BASE=$(bashio::config 'api_base')
+    BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg base "$API_BASE" --arg prov "$PROVIDER" \
+        '.providers[$prov].apiBase = $base')
+fi
+
+# Aggiunta configurazione Telegram
 if bashio::config.true 'telegram_enabled'; then
     TG_TOKEN=$(bashio::config 'telegram_token')
     TG_USER=$(bashio::config 'telegram_allow_user')
@@ -57,8 +67,13 @@ if bashio::config.true 'telegram_enabled'; then
         }')
 fi
 
+# Unione con gli strumenti aggiuntivi (additional_config_json)
 FINAL_CONFIG=$(echo "$BASE_CONFIG" | jq --argjson add "$ADDITIONAL_JSON" '. * $add')
-echo "$FINAL_CONFIG" > "$INTERNAL_ROOT/config.json"
+
+# Salvataggio fisico della configurazione
+echo "$FINAL_CONFIG" > "$SYSTEM_DIR/config.json"
+ln -sfn "$SYSTEM_DIR/config.json" "$INTERNAL_ROOT/config.json"
 
 # 5. AVVIO
+bashio::log.info "Lancio Nanobot Gateway..."
 exec nanobot gateway
