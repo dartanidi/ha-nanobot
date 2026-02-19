@@ -1,50 +1,52 @@
 #!/usr/bin/with-contenv bashio
 
 # ------------------------------------------------------------------------------
-# 1. SETUP PERSISTENZA E LINKING ROOT
+# 1. SETUP DELLE DIRECTORY (Struttura Share-Centrica)
 # ------------------------------------------------------------------------------
-PERSISTENT_DIR="/data/nanobot_root"
-INTERNAL_DIR="/root/.nanobot"
-
-mkdir -p "$PERSISTENT_DIR"
-
-if [ -d "$INTERNAL_DIR" ] && [ ! -L "$INTERNAL_DIR" ]; then
-    rm -rf "$INTERNAL_DIR"
-fi
-ln -sfn "$PERSISTENT_DIR" "$INTERNAL_DIR"
-
-# ------------------------------------------------------------------------------
-# 2. CONFIGURAZIONE WORKSPACE E MEDIA (Il Fix dei Symlink)
-# ------------------------------------------------------------------------------
+# Recuperiamo i percorsi dallo share
 USER_WORKSPACE=$(bashio::config 'workspace_path')
 USER_MEDIA=$(bashio::config 'media_path')
 
-# Percorsi interni che Nanobot usa di default
-INTERNAL_WORKSPACE="/root/.nanobot/workspace"
-INTERNAL_DEFAULT_MEDIA="/root/.nanobot/media"
+# Definiamo la sottocartella di sistema nello share
+# Qui finiranno db, log, config interne e skills interne
+SYSTEM_DIR="$USER_WORKSPACE/system"
 
-# Creazione cartelle fisiche nello share
+# Creiamo le cartelle fisiche nello share
+mkdir -p "$SYSTEM_DIR/internal_data"
 mkdir -p "$USER_WORKSPACE/skills"
 mkdir -p "$USER_MEDIA"
 
-# FIX 1: Colleghiamo il Workspace
+# Percorsi interni che il container si aspetta
+INTERNAL_ROOT="/root/.nanobot"
+INTERNAL_WORKSPACE="/root/.nanobot/workspace"
+INTERNAL_MEDIA="/root/.nanobot/media"
+
+# ------------------------------------------------------------------------------
+# 2. COLLEGAMENTO TOTALE (Symlinks)
+# ------------------------------------------------------------------------------
+# Pulizia dei percorsi interni esistenti
+rm -rf "$INTERNAL_ROOT"
+
+# Link 1: Il "cuore" del bot punta alla cartella system/internal_data nello share
+ln -sfn "$SYSTEM_DIR/internal_data" "$INTERNAL_ROOT"
+
+# Link 2: Il workspace dell'agente punta alla radice dello share (per vedere tutto)
+mkdir -p "$INTERNAL_ROOT/workspace" # Placeholder necessario per il link successivo
 rm -rf "$INTERNAL_WORKSPACE"
 ln -sfn "$USER_WORKSPACE" "$INTERNAL_WORKSPACE"
 
-# FIX 2: Colleghiamo la cartella media interna a quella dello share
-# Questo risolve il problema del file che finisce in /root/.nanobot/media/
-rm -rf "$INTERNAL_DEFAULT_MEDIA"
-ln -sfn "$USER_MEDIA" "$INTERNAL_DEFAULT_MEDIA"
+# Link 3: La cartella media interna punta allo share media
+rm -rf "$INTERNAL_MEDIA"
+ln -sfn "$USER_MEDIA" "$INTERNAL_MEDIA"
 
-bashio::log.info "Symlinks attivi: Media -> $USER_MEDIA"
+bashio::log.info "Configurazione organizzata: Sistema -> $SYSTEM_DIR"
 
 # ------------------------------------------------------------------------------
-# 3. INSTALLAZIONE SKILL INTERNA: CLAWHUB
+# 3. INSTALLAZIONE SKILL INTERNA (ClawHub)
 # ------------------------------------------------------------------------------
-INTERNAL_SKILLS_DIR="/root/.nanobot/skills"
-mkdir -p "$INTERNAL_SKILLS_DIR/clawhub"
-
-cat <<EOF > "$INTERNAL_SKILLS_DIR/clawhub/SKILL.md"
+# Creiamo la skill ClawHub dentro la cartella di sistema
+mkdir -p "$INTERNAL_ROOT/skills/clawhub"
+cat <<EOF > "$INTERNAL_ROOT/skills/clawhub/SKILL.md"
 ---
 name: clawhub
 description: Search and install agent skills from ClawHub.
@@ -105,10 +107,7 @@ fi
 if bashio::config.true 'telegram_enabled'; then
     TG_TOKEN=$(bashio::config 'telegram_token')
     TG_USER=$(bashio::config 'telegram_allow_user')
-    # Puntiamo al percorso interno che ora è linkato allo share
-    TG_DOWNLOAD_PATH="/root/.nanobot/media"
-    
-    BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg token "$TG_TOKEN" --arg user "$TG_USER" --arg media "$TG_DOWNLOAD_PATH" \
+    BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg token "$TG_TOKEN" --arg user "$TG_USER" --arg media "$INTERNAL_MEDIA" \
         '.channels.telegram = {
             "enabled": true,
             "token": $token,
@@ -117,38 +116,9 @@ if bashio::config.true 'telegram_enabled'; then
         }')
 fi
 
-# Email
-if bashio::config.true 'email_enabled'; then
-    MAIL_USER=$(bashio::config 'email_username')
-    MAIL_PASS=$(bashio::config 'email_password')
-    MAIL_IMAP=$(bashio::config 'email_imap_server')
-    MAIL_SMTP=$(bashio::config 'email_smtp_server')
-    MAIL_ALLOW=$(bashio::config 'email_allow_from')
-    
-    BASE_CONFIG=$(echo "$BASE_CONFIG" | jq \
-        --arg user "$MAIL_USER" \
-        --arg pass "$MAIL_PASS" \
-        --arg imap "$MAIL_IMAP" \
-        --arg smtp "$MAIL_SMTP" \
-        --arg allow "$MAIL_ALLOW" \
-        '.channels.email = {
-            "enabled": true,
-            "consentGranted": true,
-            "imapHost": $imap,
-            "imapPort": 993,
-            "imapUsername": $user,
-            "imapPassword": $pass,
-            "smtpHost": $smtp,
-            "smtpPort": 587,
-            "smtpUsername": $user,
-            "smtpPassword": $pass,
-            "fromAddress": $user,
-            "allowFrom": ($allow | split(",") | map(gsub("^\\s+|\\s+$";""))) 
-        }')
-fi
-
+# Merge finale e salvataggio nel percorso di sistema
 FINAL_CONFIG=$(echo "$BASE_CONFIG" | jq --argjson add "$ADDITIONAL_JSON" '. * $add')
-echo "$FINAL_CONFIG" > "$INTERNAL_DIR/config.json"
+echo "$FINAL_CONFIG" > "$INTERNAL_ROOT/config.json"
 
 # ------------------------------------------------------------------------------
 # 6. AVVIO
