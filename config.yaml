@@ -1,19 +1,17 @@
 name: "Nanobot AI"
 description: "Ultra-Lightweight AI Agent (Gateway Mode). Supports MCP, Telegram & Email."
-version: "0.2.05"
+version: "0.3.0"
 slug: "nanobot"
 init: false
 arch:
-  - aarch64
   - amd64
-  - armhf
-  - armv7
 map:
   - share:rw
 
 options:
   workspace_path: "/share/nanobot_workspace"
   media_path: "/share/nanobot_workspace/media"
+  restrict_to_workspace: true
   provider: "openai"
   api_key: ""
   api_base: ""
@@ -26,11 +24,12 @@ options:
 schema:
   workspace_path: str
   media_path: str
+  restrict_to_workspace: bool
   provider: str
   api_key: password
   api_base: str?
   model: str
-  additional_config_json: str
+  additional_config_json: str?
   telegram_enabled: bool
   telegram_token: password?
   telegram_allow_user: str?
