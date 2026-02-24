@@ -1,4 +1,4 @@
-ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:latest
+ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:9.1.0
 FROM $BUILD_FROM
 
 # Installazione dipendenze di sistema su base Debian
