@@ -11,14 +11,29 @@ mkdir -p "$USER_WORKSPACE/skills"
 mkdir -p "$USER_MEDIA"
 
 # 2. STRUTTURA DI SISTEMA (Tutto dentro /share)
-# Creiamo una cartella "system" all'interno del workspace per ospitare i file di servizio
 export HOME="$USER_WORKSPACE/system"
 NANOBOT_DIR="$HOME/.nanobot"
 mkdir -p "$NANOBOT_DIR"
 
-# Risoluzione dell'errore di restrizione di sicurezza:
-# Diciamo a Nanobot che il suo workspace interno punta alla radice del tuo workspace condiviso
+# Risoluzione restrizione workspace
 ln -sfn "$USER_WORKSPACE" "$NANOBOT_DIR/workspace"
+
+# -------------------------------------------------------------------
+# NOVITA': COPIA DELLE SKILL DI DEFAULT
+# -------------------------------------------------------------------
+bashio::log.info "Verifica e sincronizzazione delle skill di default..."
+
+# Usiamo python del container per trovare il percorso esatto del pacchetto nanobot
+BUILTIN_SKILLS_DIR=$(/opt/nanobot/bin/python3 -c "import nanobot, os; print(os.path.join(os.path.dirname(nanobot.__file__), 'skills'))")
+
+if [ -d "$BUILTIN_SKILLS_DIR" ]; then
+    # Copia ricorsiva (-r) senza sovrascrivere file esistenti (-n)
+    cp -rn "$BUILTIN_SKILLS_DIR"/. "$USER_WORKSPACE/skills/" 2>/dev/null || true
+    bashio::log.info "Skill di default sincronizzate con successo."
+else
+    bashio::log.warning "Cartella skill di default non trovata nel pacchetto originario."
+fi
+# -------------------------------------------------------------------
 
 # 3. VIRTUAL ENVIRONMENT PERSISTENTE
 VENV_DIR="$USER_WORKSPACE/venv"
@@ -44,13 +59,11 @@ if [ -z "$ADDITIONAL_JSON" ]; then
     ADDITIONAL_JSON="{}"
 fi
 
-# Validazione base del JSON per evitare crash
 if ! echo "$ADDITIONAL_JSON" | jq . >/dev/null 2>&1; then
     bashio::log.warning "Il JSON fornito in additional_config_json non e' valido. Verra' ignorato."
     ADDITIONAL_JSON="{}"
 fi
 
-# Generazione JSON base
 BASE_CONFIG=$(jq -n \
   --arg prov "$PROVIDER" \
   --arg key "$API_KEY" \
@@ -65,14 +78,12 @@ BASE_CONFIG=$(jq -n \
     "channels": {} 
   }')
 
-# Aggiunta API Base (opzionale)
 if bashio::config.has_value 'api_base'; then
     API_BASE=$(bashio::config 'api_base')
     BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg base "$API_BASE" --arg prov "$PROVIDER" \
         '.providers[$prov].apiBase = $base')
 fi
 
-# Aggiunta configurazione Telegram
 if bashio::config.true 'telegram_enabled'; then
     TG_TOKEN=$(bashio::config 'telegram_token')
     TG_USER=$(bashio::config 'telegram_allow_user')
@@ -84,7 +95,6 @@ if bashio::config.true 'telegram_enabled'; then
         }')
 fi
 
-# Unione con gli strumenti aggiuntivi e scrittura fisica nel workspace
 echo "$BASE_CONFIG" | jq --argjson add "$ADDITIONAL_JSON" '. * $add' > "$NANOBOT_DIR/config.json"
 
 # 5. AVVIO
