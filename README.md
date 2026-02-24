@@ -59,7 +59,7 @@ Paste this into the `additional_config_json` field:
     }
   }
 }
-
+```
 ## 📂 Persistence & Environment
 
 This add-on maps the execution environment directly into your Home Assistant `/share` folder:
