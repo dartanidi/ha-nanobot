@@ -1,22 +1,23 @@
-ARG BUILD_FROM=ghcr.io/hassio-addons/base/alpine:latest
+ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:latest
 FROM $BUILD_FROM
 
-# Installazione Python, Node.js (per ClawHub) e dipendenze di build
-RUN apk add --no-cache \
+# Installazione dipendenze di sistema su base Debian
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
-    py3-pip \
+    python3-venv \
+    python3-pip \
+    python3-dev \
+    build-essential \
     git \
     jq \
     curl \
-    gcc \
-    musl-dev \
-    linux-headers \
-    python3-dev \
     nodejs \
-    npm
+    npm \
+    && rm -rf /var/lib/apt/lists/*
 
-# Installazione Nanobot direttamente da GitHub
-RUN pip3 install --no-cache-dir --break-system-packages git+https://github.com/HKUDS/nanobot.git
+# Installazione Nanobot in un Venv di sistema interno al container (read-only)
+RUN python3 -m venv /opt/nanobot \
+    && /opt/nanobot/bin/pip install --no-cache-dir git+https://github.com/HKUDS/nanobot.git
 
 COPY run.sh /
 RUN chmod a+x /run.sh
