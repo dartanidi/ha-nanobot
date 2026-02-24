@@ -4,30 +4,34 @@
 USER_WORKSPACE=$(bashio::config 'workspace_path')
 USER_MEDIA=$(bashio::config 'media_path')
 
-bashio::log.info "Inizializzazione Workspace in $USER_WORKSPACE"
+bashio::log.info "Inizializzazione Workspace completo in $USER_WORKSPACE"
 
-# Creazione della struttura fisica
+# Creazione della struttura fisica utente
 mkdir -p "$USER_WORKSPACE/skills"
 mkdir -p "$USER_MEDIA"
 
-# Spostiamo la HOME dir nella cartella persistente. 
-# Questo fa sì che .nanobot, .npm, e le credenziali sopravvivano ai riavvii.
-export HOME="$USER_WORKSPACE"
+# 2. STRUTTURA DI SISTEMA (Tutto dentro /share)
+# Creiamo una cartella "system" all'interno del workspace per ospitare i file di servizio
+export HOME="$USER_WORKSPACE/system"
 NANOBOT_DIR="$HOME/.nanobot"
 mkdir -p "$NANOBOT_DIR"
 
-# 2. VIRTUAL ENVIRONMENT PERSISTENTE
+# Risoluzione dell'errore di restrizione di sicurezza:
+# Diciamo a Nanobot che il suo workspace interno punta alla radice del tuo workspace condiviso
+ln -sfn "$USER_WORKSPACE" "$NANOBOT_DIR/workspace"
+
+# 3. VIRTUAL ENVIRONMENT PERSISTENTE
 VENV_DIR="$USER_WORKSPACE/venv"
 if [ ! -d "$VENV_DIR" ]; then
-    bashio::log.info "Creazione Virtual Environment persistente per le dipendenze..."
+    bashio::log.info "Creazione Virtual Environment persistente in $VENV_DIR..."
     python3 -m venv "$VENV_DIR"
 fi
 
-# ATTIVAZIONE VENV: Prioritizziamo i binari del venv persistente, poi quelli del container
+# ATTIVAZIONE VENV: Prioritizziamo i binari del venv persistente
 export PATH="$VENV_DIR/bin:/opt/nanobot/bin:$PATH"
 export VIRTUAL_ENV="$VENV_DIR"
 
-# 3. GENERAZIONE CONFIGURAZIONE JSON (Single Source of Truth: UI)
+# 4. GENERAZIONE CONFIGURAZIONE JSON
 bashio::log.info "Generazione configurazione da interfaccia Home Assistant..."
 
 PROVIDER=$(bashio::config 'provider')
@@ -35,15 +39,14 @@ API_KEY=$(bashio::config 'api_key')
 MODEL=$(bashio::config 'model')
 RESTRICT=$(bashio::config 'restrict_to_workspace')
 
-# Se il flag additional_config_json è vuoto, usa un JSON vuoto per evitare crash di jq
 ADDITIONAL_JSON=$(bashio::config 'additional_config_json')
 if [ -z "$ADDITIONAL_JSON" ]; then
     ADDITIONAL_JSON="{}"
 fi
 
-# Validazione base del JSON aggiuntivo fornito dall'utente
+# Validazione base del JSON per evitare crash
 if ! echo "$ADDITIONAL_JSON" | jq . >/dev/null 2>&1; then
-    bashio::log.error "Il JSON fornito in additional_config_json non e' valido. Verra' ignorato."
+    bashio::log.warning "Il JSON fornito in additional_config_json non e' valido. Verra' ignorato."
     ADDITIONAL_JSON="{}"
 fi
 
@@ -81,10 +84,10 @@ if bashio::config.true 'telegram_enabled'; then
         }')
 fi
 
-# Unione con gli strumenti aggiuntivi e scrittura fisica
+# Unione con gli strumenti aggiuntivi e scrittura fisica nel workspace
 echo "$BASE_CONFIG" | jq --argjson add "$ADDITIONAL_JSON" '. * $add' > "$NANOBOT_DIR/config.json"
 
-# 4. AVVIO
-bashio::log.info "Avvio di Nanobot Gateway. Architettura x86_64, Sandboxing: $RESTRICT"
+# 5. AVVIO
+bashio::log.info "Avvio di Nanobot Gateway. Sandboxing: $RESTRICT"
 cd "$USER_WORKSPACE"
 exec nanobot gateway
