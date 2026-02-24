@@ -1,48 +1,47 @@
 #!/usr/bin/with-contenv bashio
 
-# 1. PERCORSI FISICI E VARIABILI DALLA UI
-USER_WORKSPACE=$(bashio::config 'workspace_path')
-USER_MEDIA=$(bashio::config 'media_path')
+# 1. PERCORSI BASE DALLA UI
+BASE_DIR=$(bashio::config 'workspace_path')
 
-bashio::log.info "Inizializzazione Workspace completo in $USER_WORKSPACE"
+bashio::log.info "Inizializzazione ambiente in $BASE_DIR"
 
-# Creazione della struttura fisica utente
-mkdir -p "$USER_WORKSPACE/skills"
-mkdir -p "$USER_MEDIA"
+# Definizione architettura a "Cartelle Fratello" (elimina il loop infinito)
+SYSTEM_DIR="$BASE_DIR/system"
+WORK_DIR="$BASE_DIR/workspace"
 
-# 2. STRUTTURA DI SISTEMA (Tutto dentro /share)
-export HOME="$USER_WORKSPACE/system"
+# Creazione della struttura fisica
+mkdir -p "$SYSTEM_DIR"
+mkdir -p "$WORK_DIR/skills"
+mkdir -p "$WORK_DIR/media"
+
+# 2. STRUTTURA DI SISTEMA
+export HOME="$SYSTEM_DIR"
 NANOBOT_DIR="$HOME/.nanobot"
 mkdir -p "$NANOBOT_DIR"
 
-# Risoluzione restrizione workspace
-ln -sfn "$USER_WORKSPACE" "$NANOBOT_DIR/workspace"
+# Il link punta alla cartella "fratello", prevenendo la ricorsione infinita
+ln -sfn "$WORK_DIR" "$NANOBOT_DIR/workspace"
 
 # -------------------------------------------------------------------
-# NOVITA': COPIA DELLE SKILL DI DEFAULT
+# SINCRONIZZAZIONE SKILL DI DEFAULT
 # -------------------------------------------------------------------
 bashio::log.info "Verifica e sincronizzazione delle skill di default..."
-
-# Usiamo python del container per trovare il percorso esatto del pacchetto nanobot
 BUILTIN_SKILLS_DIR=$(/opt/nanobot/bin/python3 -c "import nanobot, os; print(os.path.join(os.path.dirname(nanobot.__file__), 'skills'))")
 
 if [ -d "$BUILTIN_SKILLS_DIR" ]; then
-    # Copia ricorsiva (-r) senza sovrascrivere file esistenti (-n)
-    cp -rn "$BUILTIN_SKILLS_DIR"/. "$USER_WORKSPACE/skills/" 2>/dev/null || true
+    cp -rn "$BUILTIN_SKILLS_DIR"/. "$WORK_DIR/skills/" 2>/dev/null || true
     bashio::log.info "Skill di default sincronizzate con successo."
 else
     bashio::log.warning "Cartella skill di default non trovata nel pacchetto originario."
 fi
-# -------------------------------------------------------------------
 
-# 3. VIRTUAL ENVIRONMENT PERSISTENTE
-VENV_DIR="$USER_WORKSPACE/venv"
+# 3. VIRTUAL ENVIRONMENT PERSISTENTE (Nascosto in system)
+VENV_DIR="$SYSTEM_DIR/venv"
 if [ ! -d "$VENV_DIR" ]; then
     bashio::log.info "Creazione Virtual Environment persistente in $VENV_DIR..."
     python3 -m venv "$VENV_DIR"
 fi
 
-# ATTIVAZIONE VENV: Prioritizziamo i binari del venv persistente
 export PATH="$VENV_DIR/bin:/opt/nanobot/bin:$PATH"
 export VIRTUAL_ENV="$VENV_DIR"
 
@@ -99,5 +98,5 @@ echo "$BASE_CONFIG" | jq --argjson add "$ADDITIONAL_JSON" '. * $add' > "$NANOBOT
 
 # 5. AVVIO
 bashio::log.info "Avvio di Nanobot Gateway. Sandboxing: $RESTRICT"
-cd "$USER_WORKSPACE"
+cd "$WORK_DIR"
 exec nanobot gateway
