@@ -7,7 +7,7 @@ An ultra-lightweight, local-first AI Agent based on [HKUDS/nanobot](https://gith
 ## ✨ Features
 
 * **Multi-Provider Support:** Works with OpenAI, Anthropic, Gemini, Groq, DeepSeek, OpenRouter, and local LLMs (vLLM/Ollama via OpenAI compatible).
-* **True Persistence:** All agent memories, sessions, databases, and **Python dependencies** are stored in Home Assistant's persistent storage (`/share`), ensuring nothing is lost on updates.
+* **True Persistence:** All agent memories, sessions, databases, and **Python dependencies** are stored directly in your Home Assistant `/share` folder.
 * **Self-Evolving AI:** The agent has a dedicated Python Virtual Environment (`venv`). If it learns a skill that requires `pip install`, the packages will survive reboots!
 * **MCP Support:** Full support for the **Model Context Protocol**. Connect external tools and data sources via JSON configuration.
 * **Secure Workspace:** Restrict the agent's file access to a specific folder to prevent unauthorized system access.
@@ -16,7 +16,7 @@ An ultra-lightweight, local-first AI Agent based on [HKUDS/nanobot](https://gith
 ## 🚀 Installation
 
 1.  Add this repository to your Home Assistant Add-on Store.
-2.  Search for **Nanobot** and click **Install**. *(Note: Requires an x86/amd64 machine. ARM/Raspberry Pi is not currently supported due to dependency compilation requirements).*
+2.  Search for **Nanobot** and click **Install**. *(Note: Requires an x86/amd64 machine).*
 3.  **Configuration:** Go to the **Configuration** tab and set up your LLM Provider (API Key is required).
 4.  **Network:** (Optional) Configure the port in the **Network** section (default is 18790).
 5.  Start the Add-on.
@@ -60,13 +60,16 @@ Paste this into the `additional_config_json` field:
   }
 }
 ```
+
 ## 📂 Persistence & Environment
 
-This add-on maps the execution environment directly into your Home Assistant `/share` folder:
+This add-on maps the entire execution environment directly into your Home Assistant `/share` folder:
 
-* **Config & DB:** Located in `/share/nanobot_workspace/.nanobot`
+* **Config, DB & System:** Located in `/share/nanobot_workspace/system/.nanobot`
 * **Python venv:** Located in `/share/nanobot_workspace/venv`. If your agent installs python packages, they go here.
-* **Node Cache:** NPM caches for MCP servers will automatically be stored here, speeding up subsequent reboots.
+* **Node Cache:** NPM caches for MCP servers will automatically be stored in `/share/nanobot_workspace/system`, speeding up subsequent reboots.
+
+> **⚠️ Security Note:** Since your API Keys and Chat Database are stored in the `/share` folder, ensure your Samba/NFS add-ons are properly secured with a strong password.
 
 ## Credits
 
