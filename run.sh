@@ -19,9 +19,9 @@ ln -sfn "$WORK_DIR" "$NANOBOT_DIR/workspace"
 
 # -------------------------------------------------------------------
 # INIEZIONE PATCH: LITELLM NATIVE FALLBACK ROUTING
-# Previene errori di parsing sui modelli e forza gli standard corretti
+# Trasforma LiteLLM in un client puro per bypassare i bug di routing
 # -------------------------------------------------------------------
-bashio::log.info "Applicazione patch chirurgica per Auto-Routing (LiteLLM)..."
+bashio::log.info "Applicazione patch 'Dumb Pipe' per Auto-Routing (LiteLLM)..."
 INIT_FILE=$(ls /opt/nanobot/lib/python*/site-packages/nanobot/__init__.py | head -n 1)
 
 if ! grep -q "_acompletion_with_fallback" "$INIT_FILE"; then
@@ -33,27 +33,29 @@ _orig_acompletion = litellm.acompletion
 async def _acompletion_with_fallback(*args, **kwargs):
     model_str = kwargs.get("model", "")
     
-    # Rimuove il prefisso aggiunto da Nanobot per avere il nome puro
-    if model_str.startswith("openai/"):
-        model_str = model_str[7:]
-        
+    # 1. Pulisce i prefissi inutili inseriti da Nanobot
+    for p in ["openai/", "custom/", "openrouter/"]:
+        if model_str.startswith(p):
+            model_str = model_str[len(p):]
+            break
+            
     models = [m.strip() for m in model_str.split(",") if m.strip()]
     
     if models:
-        # 1. Modello Primario
-        kwargs["model"] = models[0]
+        primary = models[0]
         
-        # Se usiamo un URL personalizzato (NVIDIA), forziamo LiteLLM a usare
-        # il client OpenAI standard spegnendo il suo parser interno di eccezioni
+        # LA MAGIA È QUI: Se c'è un api_base (es. NVIDIA), forziamo "custom_openai/".
+        # Questo disattiva tutti i riconoscimenti interni buggati (es. ZaiException, 
+        # MinimaxException) e trasforma LiteLLM in un tubo pulitissimo.
         if kwargs.get("api_base"):
-            kwargs["custom_llm_provider"] = "openai"
+            kwargs["model"] = "custom_openai/" + primary
+        else:
+            kwargs["model"] = primary
             
-        # 2. Modelli di Fallback
+        # 2. Configura il fallback isolandolo
         if len(models) > 1:
             fallbacks = []
             for m in models[1:]:
-                # Per i fallback (es. groq/) rimuoviamo api_base e provider forzato,
-                # permettendo a LiteLLM di usare i loro server nativi!
                 fallbacks.append({
                     "model": m,
                     "api_base": None,
@@ -91,7 +93,7 @@ API_KEY=$(bashio::config 'api_key')
 MODEL=$(bashio::config 'model')
 RESTRICT=$(bashio::config 'restrict_to_workspace')
 
-# Esportiamo la chiave globale (Se hai scelto 'openai', LiteLLM cercherà OPENAI_API_KEY)
+# Esportiamo la chiave globale
 export $(echo "$PROVIDER" | tr 'a-z-' 'A-Z_')_API_KEY="$API_KEY"
 
 ADDITIONAL_JSON=$(bashio::config 'additional_config_json')
@@ -121,13 +123,12 @@ if bashio::config.true 'fallback_enabled'; then
         F_KEY=$(bashio::config 'fallback_api_key')
         F_MOD=$(bashio::config 'fallback_model')
         
-        # Esporta la chiave del fallback (es. GROQ_API_KEY)
+        # Esporta la chiave del fallback
         export $(echo "$F_PROV" | tr 'a-z-' 'A-Z_')_API_KEY="$F_KEY"
 
         BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg fprov "$F_PROV" --arg fkey "$F_KEY" \
             '.providers[$fprov] = { "apiKey": $fkey }')
             
-        # Unisce primario e fallback con la virgola
         MODEL="$MODEL,$F_PROV/$F_MOD"
     fi
 fi
