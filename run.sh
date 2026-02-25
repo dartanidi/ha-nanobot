@@ -74,20 +74,22 @@ if ! echo "$ADDITIONAL_JSON" | jq . >/dev/null 2>&1; then
 fi
 
 # Base Provider JSON
-# Aggiungiamo sempre il blocco "custom" per bypassare i controlli rigidi di Nanobot
-# sulle API non native (come NVIDIA). LiteLLM userà le chiavi esportate in "export".
 BASE_CONFIG=$(jq -n \
   --arg prov "$PROVIDER" \
   --arg key "$API_KEY" \
   --argjson rest "$RESTRICT" \
   '{
     "providers": { 
-        ($prov): { "apiKey": $key },
-        "custom": { "apiKey": "litellm-env-handled-key" }
+        ($prov): { "apiKey": $key }
     },
     "tools": { "restrictToWorkspace": $rest },
     "channels": {} 
   }')
+
+# Aggiungiamo la chiave finta per bypassare i controlli SOLO se il provider non è già "custom"
+if [ "$PROVIDER" != "custom" ]; then
+    BASE_CONFIG=$(echo "$BASE_CONFIG" | jq '.providers.custom = { "apiKey": "litellm-env-handled-key" }')
+fi
 
 if bashio::config.has_value 'api_base'; then
     API_BASE=$(bashio::config 'api_base')
