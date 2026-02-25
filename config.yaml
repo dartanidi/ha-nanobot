@@ -1,6 +1,6 @@
 name: "Nanobot AI"
-description: "Ultra-Lightweight AI Agent (Gateway Mode). Supports MCP, Telegram & Email."
-version: "0.3.1"
+description: "Ultra-Lightweight AI Agent. Supports MCP, Telegram, Custom Skills & Fallback Routing."
+version: "0.4.0"
 slug: "nanobot"
 init: false
 arch:
@@ -9,26 +9,32 @@ map:
   - share:rw
 
 options:
-  workspace_path: "/share/nanobot_workspace"
-  media_path: "/share/nanobot_workspace/media"
+  workspace_path: "/share/nanobot"
   restrict_to_workspace: true
-  provider: "openai"
+  provider: "openrouter"
   api_key: ""
   api_base: ""
-  model: "gpt-4o"
-  additional_config_json: '{"tools": {"builtin": ["document_viewer", "image_viewer", "ls", "exec", "read_file"]}}'
+  model: "deepseek/deepseek-r1"
+  fallback_enabled: false
+  fallback_provider: "groq"
+  fallback_api_key: ""
+  fallback_model: "llama-3.3-70b-versatile"
+  additional_config_json: "{}"
   telegram_enabled: true
   telegram_token: ""
   telegram_allow_user: ""
 
 schema:
   workspace_path: str
-  media_path: str
   restrict_to_workspace: bool
   provider: str
   api_key: password
   api_base: str?
   model: str
+  fallback_enabled: bool
+  fallback_provider: str?
+  fallback_api_key: password?
+  fallback_model: str?
   additional_config_json: str?
   telegram_enabled: bool
   telegram_token: password?
