@@ -1,6 +1,6 @@
 name: "Nanobot AI"
 description: "Ultra-Lightweight AI Agent for Home Assistant. Supports MCP, Telegram & Custom Skills."
-version: "0.4.0"
+version: "0.4.1"
 slug: "nanobot"
 init: false
 arch:
