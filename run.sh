@@ -53,6 +53,12 @@ API_KEY=$(bashio::config 'api_key')
 MODEL=$(bashio::config 'model')
 RESTRICT=$(bashio::config 'restrict_to_workspace')
 
+# --- FIX PER NVIDIA NIM (In attesa del merge della PR #113) ---
+export NVIDIA_NIM_API_KEY="$API_KEY"
+export NVIDIA_API_KEY="$API_KEY"
+export OPENAI_API_KEY="$API_KEY"
+# --------------------------------------------------------------
+
 export NVIDIA_NIM_API_KEY="$API_KEY"
 
 ADDITIONAL_JSON=$(bashio::config 'additional_config_json')
