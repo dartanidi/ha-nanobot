@@ -2,46 +2,59 @@
 
 # 1. PERCORSI BASE DALLA UI
 BASE_DIR=$(bashio::config 'workspace_path')
-
 bashio::log.info "Inizializzazione ambiente in $BASE_DIR"
 
-# Definizione architettura a "Cartelle Fratello" (elimina il loop infinito)
 SYSTEM_DIR="$BASE_DIR/system"
 WORK_DIR="$BASE_DIR/workspace"
 
-# Creazione della struttura fisica
 mkdir -p "$SYSTEM_DIR"
 mkdir -p "$WORK_DIR/skills"
 mkdir -p "$WORK_DIR/media"
 
-# 2. STRUTTURA DI SISTEMA
 export HOME="$SYSTEM_DIR"
 NANOBOT_DIR="$HOME/.nanobot"
 mkdir -p "$NANOBOT_DIR"
 
-# Il link punta alla cartella "fratello", prevenendo la ricorsione infinita
 ln -sfn "$WORK_DIR" "$NANOBOT_DIR/workspace"
 
 # -------------------------------------------------------------------
-# SINCRONIZZAZIONE SKILL DI DEFAULT
+# INIEZIONE PATCH: LITELLM NATIVE FALLBACK ROUTING
+# Intercetta il flusso di Nanobot e abilita i fallback in tempo reale
 # -------------------------------------------------------------------
+bashio::log.info "Applicazione patch per Auto-Routing (LiteLLM)..."
+INIT_FILE=$(ls /opt/nanobot/lib/python*/site-packages/nanobot/__init__.py | head -n 1)
+
+if ! grep -q "_acompletion_with_fallback" "$INIT_FILE"; then
+    cat << 'EOF' >> "$INIT_FILE"
+
+# --- LITELLM FALLBACK MONKEY PATCH ---
+import litellm
+_orig_acompletion = litellm.acompletion
+async def _acompletion_with_fallback(*args, **kwargs):
+    model_str = kwargs.get("model", "")
+    if isinstance(model_str, str) and "," in model_str:
+        models = [m.strip() for m in model_str.split(",")]
+        kwargs["model"] = models[0]
+        kwargs["fallbacks"] = [{"model": m} for m in models[1:]]
+    return await _orig_acompletion(*args, **kwargs)
+litellm.acompletion = _acompletion_with_fallback
+EOF
+fi
+# -------------------------------------------------------------------
+
 bashio::log.info "Verifica e sincronizzazione delle skill di default..."
 BUILTIN_SKILLS_DIR=$(/opt/nanobot/bin/python3 -c "import nanobot, os; print(os.path.join(os.path.dirname(nanobot.__file__), 'skills'))")
-
 if [ -d "$BUILTIN_SKILLS_DIR" ]; then
     cp -rn "$BUILTIN_SKILLS_DIR"/. "$WORK_DIR/skills/" 2>/dev/null || true
-    bashio::log.info "Skill di default sincronizzate con successo."
 else
-    bashio::log.warning "Cartella skill di default non trovata nel pacchetto originario."
+    bashio::log.warning "Cartella skill di default non trovata."
 fi
 
-# 3. VIRTUAL ENVIRONMENT PERSISTENTE (Nascosto in system)
 VENV_DIR="$SYSTEM_DIR/venv"
 if [ ! -d "$VENV_DIR" ]; then
-    bashio::log.info "Creazione Virtual Environment persistente in $VENV_DIR..."
+    bashio::log.info "Creazione Virtual Environment persistente..."
     python3 -m venv "$VENV_DIR"
 fi
-
 export PATH="$VENV_DIR/bin:/opt/nanobot/bin:$PATH"
 export VIRTUAL_ENV="$VENV_DIR"
 
@@ -54,26 +67,20 @@ MODEL=$(bashio::config 'model')
 RESTRICT=$(bashio::config 'restrict_to_workspace')
 
 ADDITIONAL_JSON=$(bashio::config 'additional_config_json')
-if [ -z "$ADDITIONAL_JSON" ]; then
-    ADDITIONAL_JSON="{}"
-fi
-
+if [ -z "$ADDITIONAL_JSON" ]; then ADDITIONAL_JSON="{}"; fi
 if ! echo "$ADDITIONAL_JSON" | jq . >/dev/null 2>&1; then
-    bashio::log.warning "Il JSON fornito in additional_config_json non e' valido. Verra' ignorato."
+    bashio::log.warning "JSON aggiuntivo malformato. Verrà ignorato."
     ADDITIONAL_JSON="{}"
 fi
 
+# Base Provider JSON
 BASE_CONFIG=$(jq -n \
   --arg prov "$PROVIDER" \
   --arg key "$API_KEY" \
-  --arg mod "$MODEL" \
   --argjson rest "$RESTRICT" \
   '{
     "providers": { ($prov): { "apiKey": $key } },
-    "agents": { "defaults": { "model": $mod } },
-    "tools": { 
-      "restrictToWorkspace": $rest
-    },
+    "tools": { "restrictToWorkspace": $rest },
     "channels": {} 
   }')
 
@@ -83,20 +90,40 @@ if bashio::config.has_value 'api_base'; then
         '.providers[$prov].apiBase = $base')
 fi
 
+# GESTIONE FALLBACK PROVIDER
+if bashio::config.true 'fallback_enabled'; then
+    if bashio::config.has_value 'fallback_provider' && bashio::config.has_value 'fallback_model'; then
+        F_PROV=$(bashio::config 'fallback_provider')
+        F_KEY=$(bashio::config 'fallback_api_key')
+        F_MOD=$(bashio::config 'fallback_model')
+        
+        bashio::log.info "Routing di emergenza abilitato -> Fallback su: $F_PROV/$F_MOD"
+        
+        # Aggiungiamo il provider secondario alla configurazione
+        BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg fprov "$F_PROV" --arg fkey "$F_KEY" \
+            '.providers[$fprov] = { "apiKey": $fkey }')
+            
+        # Concateniamo i modelli (es. "openrouter/deepseek-r1,groq/llama3")
+        # La nostra patch Python in alto catturerà la virgola per dividerli in Main/Fallback!
+        MODEL="$MODEL,$F_PROV/$F_MOD"
+    else
+        bashio::log.warning "Fallback attivato ma mancano provider o modello. Verrà ignorato."
+    fi
+fi
+
+# Scrittura modello primario/unito
+BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg mod "$MODEL" \
+    '.agents = { "defaults": { "model": $mod } }')
+
 if bashio::config.true 'telegram_enabled'; then
     TG_TOKEN=$(bashio::config 'telegram_token')
     TG_USER=$(bashio::config 'telegram_allow_user')
     BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg token "$TG_TOKEN" --arg user "$TG_USER" \
-        '.channels.telegram = {
-            "enabled": true,
-            "token": $token,
-            "allowFrom": [$user]
-        }')
+        '.channels.telegram = { "enabled": true, "token": $token, "allowFrom": [$user] }')
 fi
 
 echo "$BASE_CONFIG" | jq --argjson add "$ADDITIONAL_JSON" '. * $add' > "$NANOBOT_DIR/config.json"
 
-# 5. AVVIO
 bashio::log.info "Avvio di Nanobot Gateway. Sandboxing: $RESTRICT"
 cd "$WORK_DIR"
 exec nanobot gateway
