@@ -53,6 +53,8 @@ API_KEY=$(bashio::config 'api_key')
 MODEL=$(bashio::config 'model')
 RESTRICT=$(bashio::config 'restrict_to_workspace')
 
+export NVIDIA_NIM_API_KEY="$API_KEY"
+
 ADDITIONAL_JSON=$(bashio::config 'additional_config_json')
 if [ -z "$ADDITIONAL_JSON" ]; then
     ADDITIONAL_JSON="{}"
