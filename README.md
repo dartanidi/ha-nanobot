@@ -1,76 +1,73 @@
-# Home Assistant Add-on: Nanobot
+# Nanobot AI per Home Assistant (App)
 
-An ultra-lightweight, local-first AI Agent based on [HKUDS/nanobot](https://github.com/HKUDS/nanobot). This add-on runs Nanobot in **Gateway Mode**, providing an API endpoint for your AI agents with full persistence and MCP (Model Context Protocol) support.
+Nanobot è un Agente IA ultra-leggero e potente integrato direttamente in Home Assistant. Questa App (ex Add-on) è stata ingegnerizzata per offrire massima flessibilità, supporto universale ai provider LLM e persistenza sicura dei dati.
 
-![Supports amd64](https://img.shields.io/badge/arch-amd64_only-blue)
+## 🌟 Nuove Funzionalità (v0.5.0)
+* **Zero Symlink Loop:** Struttura del file system completamente riscritta. I dati di sistema (`/data`) sono invisibili e protetti, mentre il tuo workspace (`/share/nanobot_workspace`) è pulito e privo di ricorsioni.
+* **Auto-Routing Fallback:** Se il tuo modello primario va offline o esaurisce i crediti, l'agente passa automaticamente al modello di emergenza senza interrompere la conversazione.
+* **Advanced JSON Config:** Supporto totale per configurazioni complesse (es. MCP servers, tool personalizzati) tramite file esterno editabile comodamente con Studio Code Server.
 
-## ✨ Features
+---
 
-* **Multi-Provider Support:** Works with OpenAI, Anthropic, Gemini, Groq, DeepSeek, OpenRouter, and local LLMs (vLLM/Ollama via OpenAI compatible).
-* **True Persistence:** All agent memories, sessions, databases, and **Python dependencies** are stored directly in your Home Assistant `/share` folder.
-* **Self-Evolving AI:** The agent has a dedicated Python Virtual Environment (`venv`). If it learns a skill that requires `pip install`, the packages will survive reboots!
-* **MCP Support:** Full support for the **Model Context Protocol**. Connect external tools and data sources via JSON configuration.
-* **Secure Workspace:** Restrict the agent's file access to a specific folder to prevent unauthorized system access.
-* **Gateway Mode:** Exposes the Nanobot API on port `18790`.
+## 📂 Struttura Cartelle
+Al primo avvio, l'App creerà automaticamente questa struttura nella cartella definita in `workspace_path` (di default `/share/nanobot_workspace`):
 
-## 🚀 Installation
+* `/skills/` -> Qui puoi inserire i tuoi file Python per insegnare nuove capacità all'agente.
+* `/media/` -> Cartella di appoggio per immagini, audio e file gestiti dall'agente.
+* `advanced_config.json` -> Il file dove inserire le tue configurazioni JSON avanzate.
 
-1.  Add this repository to your Home Assistant Add-on Store.
-2.  Search for **Nanobot** and click **Install**. *(Note: Requires an x86/amd64 machine).*
-3.  **Configuration:** Go to the **Configuration** tab and set up your LLM Provider (API Key is required).
-4.  **Network:** (Optional) Configure the port in the **Network** section (default is 18790).
-5.  Start the Add-on.
+---
 
-## ⚙️ Configuration
+## ⚙️ Configurazione Provider (Esempi Pratici)
 
-The add-on uses the Home Assistant UI as the **Single Source of Truth**. Any manual modifications to the `config.json` file will be overwritten on the next reboot. 
+Grazie a LiteLLM integrato, puoi usare qualsiasi provider. Ecco alcune configurazioni comuni da inserire nella UI di Home Assistant:
 
-### Basic Options
+### 1. OpenRouter (Consigliato per modelli Open Source)
+* **Provider:** `openrouter`
+* **API Key:** `sk-or-v1-...`
+* **Model:** `openrouter/deepseek/deepseek-chat` (o `anthropic/claude-3.5-sonnet`)
 
-| Option | Description | Default |
-| :--- | :--- | :--- |
-| `provider` | The LLM provider to use (e.g., `openrouter`, `openai`, `anthropic`, `custom`). | `openrouter` |
-| `api_key` | Your API Key for the selected provider. | *(empty)* |
-| `model` | The specific model name (e.g., `anthropic/claude-3-5-sonnet`). | `gpt-4o` |
-| `api_base` | (Optional) Custom API endpoint. Useful for LocalAI, vLLM, or regional proxies. | *(empty)* |
+### 2. Ollama Locale (100% Gratuito e Privato)
+*Nota: Assicurati di aver sbloccato Ollama sulla rete impostando `OLLAMA_HOST=0.0.0.0` sulla macchina host.*
+* **Provider:** `openai` *(Non usare 'ollama', usa il modulo OpenAI-compatibile)*
+* **API Key:** `sk-dummy` *(Scrivi qualsiasi cosa)*
+* **API Base:** `http://TUO_IP_LOCALE:11434/v1` *(Non dimenticare il /v1 finale)*
+* **Model:** `openai/llama3.1` *(Sostituisci con il tuo modello, mantenendo openai/)*
 
-### Security & Workspace
+### 3. Z.AI (Zhipu AI / GLM Models)
+* **Provider:** `openai`
+* **API Key:** `tua-chiave-zhipu...`
+* **API Base:** `https://open.bigmodel.cn/api/paas/v4`
+* **Model:** `openai/glm-4-flash`
 
-| Option | Description | Default |
-| :--- | :--- | :--- |
-| `restrict_to_workspace` | Limits the agent shell and file operations exclusively to the `workspace_path`. Highly recommended. | `true` |
-| `workspace_path` | The directory where the agent is allowed to work. | `/share/nanobot_workspace` |
+---
 
-### Advanced: MCP & Custom Config
+## 🛡️ Il Sistema di Fallback
+Puoi impostare un LLM di emergenza direttamente dall'interfaccia utente. 
+Esempio di utilizzo strategico:
+1. Imposta **Ollama** come primario (Costo zero).
+2. Imposta **OpenAI/GPT-4o-mini** come Fallback.
+Se il tuo PC con Ollama è spento, Nanobot instraderà automaticamente la chiamata verso OpenAI, garantendoti che l'agente risponda *sempre*.
 
-The `additional_config_json` field allows you to inject raw JSON into the Nanobot configuration. 
+---
 
-**Example: Adding a Filesystem MCP Tool**
-Paste this into the `additional_config_json` field:
+## 🛠️ Configurazione Avanzata (advanced_config.json)
+Per evitare errori di sintassi nella UI di Home Assistant, tutte le configurazioni extra vanno scritte nel file `advanced_config.json` che troverai nel tuo workspace.
 
+Puoi usare questo file per aggiungere server MCP, provider di terze parti o configurazioni specifiche per i canali.
+
+**Esempio di contenuto per `advanced_config.json`:**
 ```json
 {
-  "tools": {
-    "mcpServers": {
-      "filesystem": {
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/share/nanobot_workspace"]
-      }
+  "mcpServers": {
+    "home_assistant": {
+      "command": "python",
+      "args": ["/share/nanobot_workspace/mcp_ha.py"]
     }
   }
 }
 ```
 
-## 📂 Persistence & Environment
+> 💡 **Nota di sicurezza:** L'App verificherà la validità del JSON a ogni riavvio. Se ci sono errori di sintassi (es. virgole mancanti), l'App ignorerà temporaneamente il file per evitare che l'agente vada in crash e segnalerà l'errore nei log di Home Assistant.
 
-This add-on maps the entire execution environment directly into your Home Assistant `/share` folder:
-
-* **Config, DB & System:** Located in `/share/nanobot_workspace/system/.nanobot`
-* **Python venv:** Located in `/share/nanobot_workspace/venv`. If your agent installs python packages, they go here.
-* **Node Cache:** NPM caches for MCP servers will automatically be stored in `/share/nanobot_workspace/system`, speeding up subsequent reboots.
-
-> **⚠️ Security Note:** Since your API Keys and Chat Database are stored in the `/share` folder, ensure your Samba/NFS add-ons are properly secured with a strong password.
-
-## Credits
-
-This add-on is a wrapper for [Nanobot](https://github.com/HKUDS/nanobot) created by HKUDS.
+🚀 **Sostituisci i file e fai il tuo Rebuild**: avrai a tutti gli effetti un Add-on di livello enterprise. Fammi sapere quando l'hai fatto ripartire!
