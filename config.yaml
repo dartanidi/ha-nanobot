@@ -1,6 +1,6 @@
 name: "Nanobot AI"
 description: "Ultra-Lightweight AI Agent for Home Assistant. Supports MCP, Telegram & Custom Skills."
-version: "0.4.0"
+version: "0.4.1"
 slug: "nanobot"
 init: false
 arch:
@@ -9,17 +9,13 @@ map:
   - share:rw
 
 options:
-  workspace_path: "/share/nanobot"
+  workspace_path: "/share/nanobot_workspace"
   restrict_to_workspace: true
-  provider: "openai"
+  provider: "openrouter"
   api_key: ""
   api_base: ""
-  model: "openai/llama3.1"
-  fallback_enabled: false
-  fallback_provider: "openrouter"
-  fallback_api_key: ""
-  fallback_model: "openrouter/deepseek/deepseek-chat"
-  additional_config: {}
+  model: "deepseek/deepseek-r1"
+  additional_config_json: "{}"
   telegram_enabled: true
   telegram_token: ""
   telegram_allow_user: ""
@@ -31,11 +27,7 @@ schema:
   api_key: password
   api_base: str?
   model: str
-  fallback_enabled: bool
-  fallback_provider: str?
-  fallback_api_key: password?
-  fallback_model: str?
-  additional_config: dict
+  additional_config_json: str?
   telegram_enabled: bool
   telegram_token: password?
   telegram_allow_user: str?
