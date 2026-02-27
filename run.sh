@@ -6,7 +6,7 @@ NANOBOT_DIR="/data/.nanobot"
 VENV_DIR="/data/venv"
 WORK_DIR=$(bashio::config 'workspace_path')
 
-bashio::log.info "Inizializzazione ambiente..."
+bashio::log.info "Inizializzazione ambiente Nanobot v0.5.0..."
 bashio::log.info "System Data (Hidden): $NANOBOT_DIR"
 bashio::log.info "User Workspace (Public): $WORK_DIR"
 
@@ -14,13 +14,14 @@ mkdir -p "$WORK_DIR/skills"
 mkdir -p "$WORK_DIR/media"
 mkdir -p "$NANOBOT_DIR"
 
+# Symlink sicuro: collega la cartella pubblica al sistema interno senza loop
 ln -sfn "$WORK_DIR" "$NANOBOT_DIR/workspace"
 
 # -------------------------------------------------------------------
-# 2. VIRTUAL ENVIRONMENT (Isolato in /data)
+# 2. VIRTUAL ENVIRONMENT
 # -------------------------------------------------------------------
 if [ ! -d "$VENV_DIR" ]; then
-    bashio::log.info "Creazione Virtual Environment in $VENV_DIR..."
+    bashio::log.info "Creazione Virtual Environment isolato..."
     python3 -m venv "$VENV_DIR"
 fi
 export PATH="$VENV_DIR/bin:/opt/nanobot/bin:$PATH"
@@ -29,28 +30,22 @@ export VIRTUAL_ENV="$VENV_DIR"
 # -------------------------------------------------------------------
 # 3. SINCRONIZZAZIONE SKILL DI DEFAULT
 # -------------------------------------------------------------------
-bashio::log.info "Sincronizzazione skill nel workspace utente..."
-BUILTIN_SKILLS_DIR=$(/opt/nanobot/bin/python3 -c "import nanobot, os; print(os.path.join(os.path.dirname(nanobot.__file__), 'skills'))")
+bashio::log.info "Sincronizzazione skill..."
+BUILTIN_SKILLS_DIR=$(python3 -c "import nanobot, os; print(os.path.join(os.path.dirname(nanobot.__file__), 'skills'))" 2>/dev/null || echo "")
 
-if [ -d "$BUILTIN_SKILLS_DIR" ]; then
+if [ -n "$BUILTIN_SKILLS_DIR" ] && [ -d "$BUILTIN_SKILLS_DIR" ]; then
     cp -rn "$BUILTIN_SKILLS_DIR"/. "$WORK_DIR/skills/" 2>/dev/null || true
 fi
 
 # -------------------------------------------------------------------
-# 4. GENERAZIONE CONFIGURAZIONE JSON
+# 4. GENERAZIONE CONFIGURAZIONE BASE
 # -------------------------------------------------------------------
-bashio::log.info "Generazione configurazione da UI..."
+bashio::log.info "Costruzione configurazione provider..."
 
 PROVIDER=$(bashio::config 'provider')
 API_KEY=$(bashio::config 'api_key')
 MODEL=$(bashio::config 'model')
 RESTRICT=$(bashio::config 'restrict_to_workspace')
-
-ADDITIONAL_JSON=$(bashio::config 'additional_config_json')
-if [ -z "$ADDITIONAL_JSON" ]; then ADDITIONAL_JSON="{}"; fi
-if ! echo "$ADDITIONAL_JSON" | jq . >/dev/null 2>&1; then
-    ADDITIONAL_JSON="{}"
-fi
 
 BASE_CONFIG=$(jq -n \
   --arg prov "$PROVIDER" \
@@ -68,30 +63,32 @@ if bashio::config.has_value 'api_base'; then
         '.providers[$prov].apiBase = $base')
 fi
 
-# Integrazione Fallback
+# -------------------------------------------------------------------
+# 5. GESTIONE FALLBACK LLM
+# -------------------------------------------------------------------
 if bashio::config.true 'fallback_enabled'; then
     if bashio::config.has_value 'fallback_provider' && bashio::config.has_value 'fallback_model'; then
-        bashio::log.info "Integrazione Fallback LLM attiva."
+        bashio::log.info "Fallback LLM attivato. Integrazione credenziali secondarie..."
         F_PROV=$(bashio::config 'fallback_provider')
         F_KEY=$(bashio::config 'fallback_api_key')
         F_MOD=$(bashio::config 'fallback_model')
 
-        # Aggiunge le credenziali del provider di fallback
         BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg fprov "$F_PROV" --arg fkey "$F_KEY" \
             '.providers[$fprov] = { "apiKey": $fkey }')
             
-        # Concatena i modelli in formato LiteLLM (es. openai/gpt,anthropic/claude)
         MODEL="$MODEL,$F_MOD"
     else
-        bashio::log.warning "Fallback attivato ma mancano provider o modello. Lo ignoro."
+        bashio::log.warning "Fallback abilitato ma parametri incompleti. Ignorato."
     fi
 fi
 
-# Inserimento del blocco 'agents' con i modelli calcolati
+# Inserimento modelli
 BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg mod "$MODEL" \
     '.agents = { "defaults": { "model": $mod } }')
 
-# Integrazione Telegram
+# -------------------------------------------------------------------
+# 6. GESTIONE TELEGRAM
+# -------------------------------------------------------------------
 if bashio::config.true 'telegram_enabled'; then
     TG_TOKEN=$(bashio::config 'telegram_token')
     TG_USER=$(bashio::config 'telegram_allow_user')
@@ -99,13 +96,31 @@ if bashio::config.true 'telegram_enabled'; then
         '.channels.telegram = { "enabled": true, "token": $token, "allowFrom": [$user] }')
 fi
 
-# Salvataggio
-echo "$BASE_CONFIG" | jq --argjson add "$ADDITIONAL_JSON" '. * $add' > "$NANOBOT_DIR/config.json"
+# -------------------------------------------------------------------
+# 7. GESTIONE ADVANCED CONFIG (File Esterno)
+# -------------------------------------------------------------------
+ADVANCED_FILE="$WORK_DIR/advanced_config.json"
+
+if [ -f "$ADVANCED_FILE" ]; then
+    bashio::log.info "Rilevato advanced_config.json, validazione in corso..."
+    if jq . "$ADVANCED_FILE" >/dev/null 2>&1; then
+        bashio::log.info "File JSON valido. Fusione configurazioni..."
+        BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --slurpfile adv "$ADVANCED_FILE" '. * $adv[0]')
+    else
+        bashio::log.error "ERRORE DI SINTASSI in advanced_config.json! Verrà ignorato per prevenire crash."
+    fi
+else
+    bashio::log.info "Creazione template advanced_config.json nel workspace..."
+    echo "{}" > "$ADVANCED_FILE"
+fi
+
+# Salvataggio configurazione finale
+echo "$BASE_CONFIG" > "$NANOBOT_DIR/config.json"
 
 # -------------------------------------------------------------------
-# 5. AVVIO
+# 8. AVVIO
 # -------------------------------------------------------------------
-bashio::log.info "Modelli in uso (LiteLLM Routing): $MODEL"
+bashio::log.info "Modelli in uso (Primario -> Fallback): $MODEL"
 bashio::log.info "Avvio di Nanobot Gateway..."
 cd "$WORK_DIR"
 exec nanobot gateway
