@@ -73,8 +73,16 @@ if bashio::config.true 'fallback_enabled'; then
         F_KEY=$(bashio::config 'fallback_api_key')
         F_MOD=$(bashio::config 'fallback_model')
 
+        # Crea la voce base per il provider di fallback
         BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg fprov "$F_PROV" --arg fkey "$F_KEY" \
             '.providers[$fprov] = { "apiKey": $fkey }')
+        
+        # Aggiunge apiBase al fallback se l'utente lo ha compilato
+        if bashio::config.has_value 'fallback_api_base'; then
+            F_BASE=$(bashio::config 'fallback_api_base')
+            BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg fbase "$F_BASE" --arg fprov "$F_PROV" \
+                '.providers[$fprov].apiBase = $fbase')
+        fi
             
         MODEL="$MODEL,$F_MOD"
     else
