@@ -1,62 +1,62 @@
-# Nanobot AI per Home Assistant (App)
+# Nanobot AI for Home Assistant (App)
 
-Nanobot è un Agente IA ultra-leggero e potente integrato direttamente in Home Assistant. Questa App (ex Add-on) è stata ingegnerizzata per offrire massima flessibilità, supporto universale ai provider LLM e persistenza sicura dei dati.
+Nanobot is an ultra-lightweight and powerful AI Agent integrated directly into Home Assistant. This App (formerly Add-on) has been engineered to offer maximum flexibility, universal support for LLM providers, and secure data persistence.
 
-## 🌟 Nuove Funzionalità (v0.5.0)
-* **Zero Symlink Loop:** Struttura del file system completamente riscritta. I dati di sistema (`/data`) sono invisibili e protetti, mentre il tuo workspace (`/share/nanobot_workspace`) è pulito e privo di ricorsioni.
-* **Auto-Routing Fallback:** Se il tuo modello primario va offline o esaurisce i crediti, l'agente passa automaticamente al modello di emergenza senza interrompere la conversazione.
-* **Advanced JSON Config:** Supporto totale per configurazioni complesse (es. MCP servers, tool personalizzati) tramite file esterno editabile comodamente con Studio Code Server.
-
----
-
-## 📂 Struttura Cartelle
-Al primo avvio, l'App creerà automaticamente questa struttura nella cartella definita in `workspace_path` (di default `/share/nanobot_workspace`):
-
-* `/skills/` -> Qui puoi inserire i tuoi file Python per insegnare nuove capacità all'agente.
-* `/media/` -> Cartella di appoggio per immagini, audio e file gestiti dall'agente.
-* `advanced_config.json` -> Il file dove inserire le tue configurazioni JSON avanzate.
+## 🌟 New Features (v0.5.0)
+* **Zero Symlink Loop:** Completely rewritten file system structure. System data (`/data`) is invisible and protected, while your workspace (`/share/nanobot_workspace`) is clean and free of recursions.
+* **Auto-Routing Fallback:** If your primary model goes offline or runs out of credits, the agent automatically switches to the fallback model without interrupting the conversation.
+* **Advanced JSON Config:** Full support for complex configurations (e.g., MCP servers, custom tools) via an external file that can be easily edited with Studio Code Server.
 
 ---
 
-## ⚙️ Configurazione Provider (Esempi Pratici)
+## 📂 Folder Structure
+On the first startup, the App will automatically create this structure in the folder defined in `workspace_path` (default `/share/nanobot_workspace`):
 
-Grazie a LiteLLM integrato, puoi usare qualsiasi provider. Ecco alcune configurazioni comuni da inserire nella UI di Home Assistant:
+* `/skills/` -> Here you can place your Python files to teach the agent new capabilities.
+* `/media/` -> Storage folder for images, audio, and files managed by the agent.
+* `advanced_config.json` -> The file where you can put your advanced JSON configurations.
 
-### 1. OpenRouter (Consigliato per modelli Open Source)
+---
+
+## ⚙️ Provider Configuration (Practical Examples)
+
+Thanks to the integrated LiteLLM, you can use any provider. Here are some common configurations to enter in the Home Assistant UI:
+
+### 1. OpenRouter (Recommended for Open Source models)
 * **Provider:** `openrouter`
 * **API Key:** `sk-or-v1-...`
-* **Model:** `openrouter/deepseek/deepseek-chat` (o `anthropic/claude-3.5-sonnet`)
+* **Model:** `openrouter/deepseek/deepseek-chat` (or `anthropic/claude-3.5-sonnet`)
 
-### 2. Ollama Locale (100% Gratuito e Privato)
-*Nota: Assicurati di aver sbloccato Ollama sulla rete impostando `OLLAMA_HOST=0.0.0.0` sulla macchina host.*
-* **Provider:** `openai` *(Non usare 'ollama', usa il modulo OpenAI-compatibile)*
-* **API Key:** `sk-dummy` *(Scrivi qualsiasi cosa)*
-* **API Base:** `http://TUO_IP_LOCALE:11434/v1` *(Non dimenticare il /v1 finale)*
-* **Model:** `openai/llama3.1` *(Sostituisci con il tuo modello, mantenendo openai/)*
+### 2. Local Ollama (100% Free and Private)
+*Note: Make sure you have exposed Ollama to the network by setting `OLLAMA_HOST=0.0.0.0` on the host machine.*
+* **Provider:** `openai` *(Do not use 'ollama', use the OpenAI-compatible module)*
+* **API Key:** `sk-dummy` *(Write anything)*
+* **API Base:** `http://YOUR_LOCAL_IP:11434/v1` *(Do not forget the trailing /v1)*
+* **Model:** `openai/llama3.1` *(Replace with your model, keeping the openai/ prefix)*
 
 ### 3. Z.AI (Zhipu AI / GLM Models)
 * **Provider:** `openai`
-* **API Key:** `tua-chiave-zhipu...`
+* **API Key:** `your-zhipu-key...`
 * **API Base:** `https://open.bigmodel.cn/api/paas/v4`
 * **Model:** `openai/glm-4-flash`
 
 ---
 
-## 🛡️ Il Sistema di Fallback
-Puoi impostare un LLM di emergenza direttamente dall'interfaccia utente. 
-Esempio di utilizzo strategico:
-1. Imposta **Ollama** come primario (Costo zero).
-2. Imposta **OpenAI/GPT-4o-mini** come Fallback.
-Se il tuo PC con Ollama è spento, Nanobot instraderà automaticamente la chiamata verso OpenAI, garantendoti che l'agente risponda *sempre*.
+## 🛡️ The Fallback System
+You can set an emergency LLM directly from the user interface. 
+Example of strategic use:
+1. Set **Ollama** as primary (Zero cost).
+2. Set **OpenAI/GPT-4o-mini** as Fallback.
+If your PC with Ollama is turned off, Nanobot will automatically route the call to OpenAI, ensuring the agent *always* responds.
 
 ---
 
-## 🛠️ Configurazione Avanzata (advanced_config.json)
-Per evitare errori di sintassi nella UI di Home Assistant, tutte le configurazioni extra vanno scritte nel file `advanced_config.json` che troverai nel tuo workspace.
+## 🛠️ Advanced Configuration (advanced_config.json)
+To avoid syntax errors in the Home Assistant UI, all extra configurations must be written in the `advanced_config.json` file that you will find in your workspace.
 
-Puoi usare questo file per aggiungere server MCP, provider di terze parti o configurazioni specifiche per i canali.
+You can use this file to add MCP servers, third-party providers, or channel-specific configurations.
 
-**Esempio di contenuto per `advanced_config.json`:**
+**Example content for `advanced_config.json`:**
 ```json
 {
   "mcpServers": {
@@ -67,7 +67,6 @@ Puoi usare questo file per aggiungere server MCP, provider di terze parti o conf
   }
 }
 ```
+> 💡 **Safety Note:** The App will verify the validity of the JSON at every restart. If there are syntax errors (e.g., missing commas), the App will temporarily ignore the file to prevent the agent from crashing and will report the error in the Home Assistant logs.
 
-> 💡 **Nota di sicurezza:** L'App verificherà la validità del JSON a ogni riavvio. Se ci sono errori di sintassi (es. virgole mancanti), l'App ignorerà temporaneamente il file per evitare che l'agente vada in crash e segnalerà l'errore nei log di Home Assistant.
-
-🚀 **Sostituisci i file e fai il tuo Rebuild**: avrai a tutti gli effetti un Add-on di livello enterprise. Fammi sapere quando l'hai fatto ripartire!
+🚀 **Replace the files and trigger a Rebuild**: you will effectively have an enterprise-grade App. Let me know when you've got it running again!
