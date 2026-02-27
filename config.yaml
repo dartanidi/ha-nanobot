@@ -1,6 +1,6 @@
 name: "Nanobot AI"
 description: "Ultra-Lightweight AI Agent for Home Assistant. Supports MCP, Telegram & Custom Skills."
-version: "0.4.5"
+version: "0.5.0"
 slug: "nanobot"
 init: false
 arch:
@@ -15,7 +15,11 @@ options:
   api_key: ""
   api_base: ""
   model: "deepseek/deepseek-r1"
-  additional_config_json: "{}"
+  fallback_enabled: false
+  fallback_provider: "openai"
+  fallback_api_key: ""
+  fallback_model: "openai/gpt-4o-mini"
+  additional_config: {}
   telegram_enabled: true
   telegram_token: ""
   telegram_allow_user: ""
@@ -27,7 +31,11 @@ schema:
   api_key: password
   api_base: str?
   model: str
-  additional_config_json: str?
+  fallback_enabled: bool
+  fallback_provider: str?
+  fallback_api_key: password?
+  fallback_model: str?
+  additional_config: dict
   telegram_enabled: bool
   telegram_token: password?
   telegram_allow_user: str?
