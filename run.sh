@@ -1,26 +1,19 @@
 #!/usr/bin/with-contenv bashio
 
 # 1. DEFINIZIONE PERCORSI (Standard Home Assistant)
-# /data: Nascosto e persistente (DB, Config, Venv)
 export HOME="/data"
 NANOBOT_DIR="/data/.nanobot"
 VENV_DIR="/data/venv"
-
-# /share: Visibile all'utente (Impostato dalla UI, es. /share/nanobot)
 WORK_DIR=$(bashio::config 'workspace_path')
 
 bashio::log.info "Inizializzazione ambiente..."
 bashio::log.info "System Data (Hidden): $NANOBOT_DIR"
 bashio::log.info "User Workspace (Public): $WORK_DIR"
 
-# Creazione struttura pubblica (visibile a te)
 mkdir -p "$WORK_DIR/skills"
 mkdir -p "$WORK_DIR/media"
-
-# Creazione cartella di sistema (invisibile)
 mkdir -p "$NANOBOT_DIR"
 
-# IL PONTE SICURO: Nessun loop ricorsivo possibile perché sono su due mount separati
 ln -sfn "$WORK_DIR" "$NANOBOT_DIR/workspace"
 
 # -------------------------------------------------------------------
@@ -53,13 +46,12 @@ API_KEY=$(bashio::config 'api_key')
 MODEL=$(bashio::config 'model')
 RESTRICT=$(bashio::config 'restrict_to_workspace')
 
-# Lettura del nuovo campo Dict per l'additional config
-ADDITIONAL_JSON=$(bashio::config 'additional_config')
-if [ -z "$ADDITIONAL_JSON" ] || [ "$ADDITIONAL_JSON" = "null" ]; then
+ADDITIONAL_JSON=$(bashio::config 'additional_config_json')
+if [ -z "$ADDITIONAL_JSON" ]; then ADDITIONAL_JSON="{}"; fi
+if ! echo "$ADDITIONAL_JSON" | jq . >/dev/null 2>&1; then
     ADDITIONAL_JSON="{}"
 fi
 
-# Costruiamo la base dei provider
 BASE_CONFIG=$(jq -n \
   --arg prov "$PROVIDER" \
   --arg key "$API_KEY" \
@@ -95,7 +87,7 @@ if bashio::config.true 'fallback_enabled'; then
     fi
 fi
 
-# Inserimento del blocco 'agents' con il modello (o i modelli concatenati)
+# Inserimento del blocco 'agents' con i modelli calcolati
 BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg mod "$MODEL" \
     '.agents = { "defaults": { "model": $mod } }')
 
@@ -107,7 +99,7 @@ if bashio::config.true 'telegram_enabled'; then
         '.channels.telegram = { "enabled": true, "token": $token, "allowFrom": [$user] }')
 fi
 
-# Unione finale con l'additional config e salvataggio
+# Salvataggio
 echo "$BASE_CONFIG" | jq --argjson add "$ADDITIONAL_JSON" '. * $add' > "$NANOBOT_DIR/config.json"
 
 # -------------------------------------------------------------------
