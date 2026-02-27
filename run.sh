@@ -48,25 +48,24 @@ fi
 # -------------------------------------------------------------------
 bashio::log.info "Generazione configurazione da UI..."
 
-ROVIDER=$(bashio::config 'provider')
+PROVIDER=$(bashio::config 'provider')
 API_KEY=$(bashio::config 'api_key')
 MODEL=$(bashio::config 'model')
 RESTRICT=$(bashio::config 'restrict_to_workspace')
 
-ADDITIONAL_JSON=$(bashio::config 'additional_config_json')
-if [ -z "$ADDITIONAL_JSON" ]; then ADDITIONAL_JSON="{}"; fi
-if ! echo "$ADDITIONAL_JSON" | jq . >/dev/null 2>&1; then
+# Lettura del nuovo campo Dict per l'additional config
+ADDITIONAL_JSON=$(bashio::config 'additional_config')
+if [ -z "$ADDITIONAL_JSON" ] || [ "$ADDITIONAL_JSON" = "null" ]; then
     ADDITIONAL_JSON="{}"
 fi
 
+# Costruiamo la base dei provider
 BASE_CONFIG=$(jq -n \
   --arg prov "$PROVIDER" \
   --arg key "$API_KEY" \
-  --arg mod "$MODEL" \
   --argjson rest "$RESTRICT" \
   '{
     "providers": { ($prov): { "apiKey": $key } },
-    "agents": { "defaults": { "model": $mod } },
     "tools": { "restrictToWorkspace": $rest },
     "channels": {} 
   }')
@@ -77,6 +76,30 @@ if bashio::config.has_value 'api_base'; then
         '.providers[$prov].apiBase = $base')
 fi
 
+# Integrazione Fallback
+if bashio::config.true 'fallback_enabled'; then
+    if bashio::config.has_value 'fallback_provider' && bashio::config.has_value 'fallback_model'; then
+        bashio::log.info "Integrazione Fallback LLM attiva."
+        F_PROV=$(bashio::config 'fallback_provider')
+        F_KEY=$(bashio::config 'fallback_api_key')
+        F_MOD=$(bashio::config 'fallback_model')
+
+        # Aggiunge le credenziali del provider di fallback
+        BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg fprov "$F_PROV" --arg fkey "$F_KEY" \
+            '.providers[$fprov] = { "apiKey": $fkey }')
+            
+        # Concatena i modelli in formato LiteLLM (es. openai/gpt,anthropic/claude)
+        MODEL="$MODEL,$F_MOD"
+    else
+        bashio::log.warning "Fallback attivato ma mancano provider o modello. Lo ignoro."
+    fi
+fi
+
+# Inserimento del blocco 'agents' con il modello (o i modelli concatenati)
+BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg mod "$MODEL" \
+    '.agents = { "defaults": { "model": $mod } }')
+
+# Integrazione Telegram
 if bashio::config.true 'telegram_enabled'; then
     TG_TOKEN=$(bashio::config 'telegram_token')
     TG_USER=$(bashio::config 'telegram_allow_user')
@@ -84,12 +107,13 @@ if bashio::config.true 'telegram_enabled'; then
         '.channels.telegram = { "enabled": true, "token": $token, "allowFrom": [$user] }')
 fi
 
-# Salviamo il file config.json al sicuro in /data
+# Unione finale con l'additional config e salvataggio
 echo "$BASE_CONFIG" | jq --argjson add "$ADDITIONAL_JSON" '. * $add' > "$NANOBOT_DIR/config.json"
 
 # -------------------------------------------------------------------
 # 5. AVVIO
 # -------------------------------------------------------------------
+bashio::log.info "Modelli in uso (LiteLLM Routing): $MODEL"
 bashio::log.info "Avvio di Nanobot Gateway..."
 cd "$WORK_DIR"
 exec nanobot gateway
