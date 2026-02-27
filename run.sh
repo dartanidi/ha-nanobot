@@ -1,26 +1,19 @@
 #!/usr/bin/with-contenv bashio
 
 # 1. DEFINIZIONE PERCORSI (Standard Home Assistant)
-# /data: Nascosto e persistente (DB, Config, Venv)
 export HOME="/data"
 NANOBOT_DIR="/data/.nanobot"
 VENV_DIR="/data/venv"
-
-# /share: Visibile all'utente (Impostato dalla UI, es. /share/nanobot)
 WORK_DIR=$(bashio::config 'workspace_path')
 
 bashio::log.info "Inizializzazione ambiente..."
 bashio::log.info "System Data (Hidden): $NANOBOT_DIR"
 bashio::log.info "User Workspace (Public): $WORK_DIR"
 
-# Creazione struttura pubblica (visibile a te)
 mkdir -p "$WORK_DIR/skills"
 mkdir -p "$WORK_DIR/media"
-
-# Creazione cartella di sistema (invisibile)
 mkdir -p "$NANOBOT_DIR"
 
-# IL PONTE SICURO: Nessun loop ricorsivo possibile perché sono su due mount separati
 ln -sfn "$WORK_DIR" "$NANOBOT_DIR/workspace"
 
 # -------------------------------------------------------------------
@@ -53,20 +46,13 @@ API_KEY=$(bashio::config 'api_key')
 MODEL=$(bashio::config 'model')
 RESTRICT=$(bashio::config 'restrict_to_workspace')
 
-ADDITIONAL_JSON=$(bashio::config 'additional_config_json')
-if [ -z "$ADDITIONAL_JSON" ]; then ADDITIONAL_JSON="{}"; fi
-if ! echo "$ADDITIONAL_JSON" | jq . >/dev/null 2>&1; then
-    ADDITIONAL_JSON="{}"
-fi
-
+# A. Costruzione del blocco base
 BASE_CONFIG=$(jq -n \
   --arg prov "$PROVIDER" \
   --arg key "$API_KEY" \
-  --arg mod "$MODEL" \
   --argjson rest "$RESTRICT" \
   '{
     "providers": { ($prov): { "apiKey": $key } },
-    "agents": { "defaults": { "model": $mod } },
     "tools": { "restrictToWorkspace": $rest },
     "channels": {} 
   }')
@@ -77,6 +63,30 @@ if bashio::config.has_value 'api_base'; then
         '.providers[$prov].apiBase = $base')
 fi
 
+# B. Integrazione Fallback Provider
+if bashio::config.true 'fallback_enabled'; then
+    if bashio::config.has_value 'fallback_provider' && bashio::config.has_value 'fallback_model'; then
+        bashio::log.info "Integrazione Fallback LLM in corso..."
+        F_PROV=$(bashio::config 'fallback_provider')
+        F_KEY=$(bashio::config 'fallback_api_key')
+        F_MOD=$(bashio::config 'fallback_model')
+
+        # Inserisce la chiave API del fallback nel blocco "providers"
+        BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg fprov "$F_PROV" --arg fkey "$F_KEY" \
+            '.providers[$fprov] = { "apiKey": $fkey }')
+            
+        # Concatena il modello primario con il modello di fallback
+        MODEL="$MODEL,$F_MOD"
+    else
+        bashio::log.warning "Fallback abilitato ma parametri mancanti. Lo ignoro."
+    fi
+fi
+
+# Applica la stringa dei modelli (primario o primario+fallback)
+BASE_CONFIG=$(echo "$BASE_CONFIG" | jq --arg mod "$MODEL" \
+    '.agents = { "defaults": { "model": $mod } }')
+
+# C. Integrazione Telegram
 if bashio::config.true 'telegram_enabled'; then
     TG_TOKEN=$(bashio::config 'telegram_token')
     TG_USER=$(bashio::config 'telegram_allow_user')
@@ -84,12 +94,19 @@ if bashio::config.true 'telegram_enabled'; then
         '.channels.telegram = { "enabled": true, "token": $token, "allowFrom": [$user] }')
 fi
 
-# Salviamo il file config.json al sicuro in /data
+# D. Integrazione "Additional Config" (Ora come dict!)
+ADDITIONAL_JSON=$(bashio::config 'additional_config')
+if [ -z "$ADDITIONAL_JSON" ] || [ "$ADDITIONAL_JSON" = "null" ]; then
+    ADDITIONAL_JSON="{}"
+fi
+
+# Unione finale e salvataggio
 echo "$BASE_CONFIG" | jq --argjson add "$ADDITIONAL_JSON" '. * $add' > "$NANOBOT_DIR/config.json"
 
 # -------------------------------------------------------------------
 # 5. AVVIO
 # -------------------------------------------------------------------
+bashio::log.info "Modelli in uso (LiteLLM Routing): $MODEL"
 bashio::log.info "Avvio di Nanobot Gateway..."
 cd "$WORK_DIR"
 exec nanobot gateway
