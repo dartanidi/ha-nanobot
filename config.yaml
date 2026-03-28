@@ -5,6 +5,7 @@ slug: "nanobot"
 init: false
 arch:
   - amd64
+  - aarch64
 map:
   - share:rw
 
